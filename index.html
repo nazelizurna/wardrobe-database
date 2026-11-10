@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>the wardrobe</title>
+<style>
+:root{--bg:#f3efe6;--ink:#1a1a1a;--line:#c9c4b8;--mute:#6f6a5f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 "Helvetica Neue",Inter,Arial,sans-serif;padding:56px clamp(16px,3vw,56px) 80px}
+.count{font-size:14px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 40px}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:56px}
+.tabs{display:flex;flex-wrap:wrap}
+.tabs button,.bar select,.bar input{font:inherit;font-size:13px;letter-spacing:.06em;text-transform:uppercase;background:transparent;color:var(--ink);border:1px solid var(--line);padding:11px 18px;margin:0 -1px -1px 0;cursor:pointer;border-radius:0}
+.bar select,.bar input{margin:0;padding:11px 12px}
+.bar input{text-transform:none;letter-spacing:0;cursor:text;min-width:160px}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,select:focus-visible,input:focus-visible,.item:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:48px 20px}
+.item{margin:0;position:relative}
+.item img,.ph{width:100%;aspect-ratio:1;object-fit:contain;display:block;mix-blend-mode:multiply}
+.ph{border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;color:var(--mute);font-size:12px;mix-blend-mode:normal}
+.item figcaption{font-size:12px;color:var(--mute);text-align:center;margin-top:6px;opacity:0;transition:opacity .15s}
+.item:hover figcaption,.item:focus-within figcaption{opacity:1}
+@media(hover:none){.item figcaption{opacity:1}}
+.empty{color:var(--mute)}
+</style>
+</head>
+<body>
+<p class="count" id="count"></p>
+<div class="bar">
+  <div class="tabs" id="tabs"></div>
+  <span id="extras" style="display:contents"></span>
+  <input id="q" type="search" placeholder="Search by name" aria-label="Search by name">
+</div>
+<main class="grid" id="grid"></main>
+<script src="items.js"></script>
+<script>
+const FIELDS=[["brand","All brands"],["color","All colors"],["day","All days"]];
+const st={type:"all",q:"",extra:{}};
+const $=id=>document.getElementById(id);
+const uniq=k=>[...new Set(ITEMS.map(i=>i[k]).filter(Boolean))].sort();
+
+function buildControls(){
+  const types=uniq("type");
+  $("tabs").innerHTML="";
+  ["all",...types].forEach(t=>{
+    const b=document.createElement("button");
+    b.textContent=t==="all"?"All":t;b.dataset.t=t;
+    b.onclick=()=>{st.type=t;render()};
+    $("tabs").append(b);
+  });
+  FIELDS.forEach(([k,label])=>{
+    const vals=uniq(k);if(!vals.length)return;
+    const s=document.createElement("select");s.setAttribute("aria-label",label);
+    s.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option>${v}</option>`).join("");
+    s.onchange=()=>{st.extra[k]=s.value;render()};
+    $("extras").append(s);
+  });
+  $("q").oninput=e=>{st.q=e.target.value.toLowerCase();render()};
+}
+
+function render(){
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.t===st.type));
+  const list=ITEMS.filter(i=>
+    (st.type==="all"||i.type===st.type)&&
+    (!st.q||i.name.toLowerCase().includes(st.q))&&
+    Object.entries(st.extra).every(([k,v])=>!v||i[k]===v));
+  $("count").textContent=list.length+(list.length===1?" piece":" pieces");
+  const g=$("grid");g.innerHTML="";
+  if(!list.length){g.innerHTML='<p class="empty">No pieces match these filters.</p>';return}
+  list.forEach(i=>{
+    const f=document.createElement("figure");f.className="item";f.tabIndex=0;
+    const media=i.image?`<img loading="lazy" src="${encodeURI(i.image)}" alt="${i.name}">`:`<div class="ph">${i.name}</div>`;
+    f.innerHTML=media+`<figcaption>${i.name}${i.brand?" · "+i.brand:""}</figcaption>`;
+    g.append(f);
+  });
+}
+buildControls();render();
+</script>
+</body>
+</html>
