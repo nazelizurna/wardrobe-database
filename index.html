@@ -9,13 +9,18 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 "Helvetica Neue",Inter,Arial,sans-serif;padding:56px clamp(16px,3vw,56px) 80px}
 .count{font-size:14px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 40px}
-.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:56px}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px}
 .tabs{display:flex;flex-wrap:wrap}
-.tabs button,.bar select,.bar input{font:inherit;font-size:13px;letter-spacing:.06em;text-transform:uppercase;background:transparent;color:var(--ink);border:1px solid var(--line);padding:11px 18px;margin:0 -1px -1px 0;cursor:pointer;border-radius:0}
-.bar select,.bar input{margin:0;padding:11px 12px}
-.bar input{text-transform:none;letter-spacing:0;cursor:text;min-width:160px}
-.tabs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button,select,input{font:inherit;font-size:13px;letter-spacing:.06em;text-transform:uppercase;background:transparent;color:var(--ink);border:1px solid var(--line);padding:11px 18px;cursor:pointer;border-radius:0}
+.tabs button{margin:0 -1px -1px 0}
+select,input{padding:11px 12px}
+input{text-transform:none;letter-spacing:0;cursor:text;min-width:160px}
+button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible,.item:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.colors{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:48px}
+.colors .chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;font-size:12px;letter-spacing:.04em;text-transform:none}
+.dot{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.25)}
+.colors .mode{margin-left:8px;font-size:11px;padding:7px 10px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:48px 20px}
 .item{margin:0;position:relative}
 .item img,.ph{width:100%;aspect-ratio:1;object-fit:contain;display:block;mix-blend-mode:multiply}
@@ -33,50 +38,89 @@ button:focus-visible,select:focus-visible,input:focus-visible,.item:focus-visibl
   <span id="extras" style="display:contents"></span>
   <input id="q" type="search" placeholder="Search by name" aria-label="Search by name">
 </div>
+<div class="colors" id="colors" role="group" aria-label="Filter by color"></div>
 <main class="grid" id="grid"></main>
-<script src="items.js"></script>
 <script>
-const FIELDS=[["brand","All brands"],["color","All colors"],["day","All days"]];
-const st={type:"all",q:"",extra:{}};
+const FIELDS=[["brand","All brands"],["day","All days"]];
+const st={type:"all",q:"",extra:{},colors:new Set(),all:false};
 const $=id=>document.getElementById(id);
-const uniq=k=>[...new Set(ITEMS.map(i=>i[k]).filter(Boolean))].sort();
+let ITEMS=[];
+
+function parseCSV(t){
+  t=t.replace(/^\uFEFF/,"");
+  const first=t.split(/\r?\n/)[0]||"";
+  const d=[",",";","\t"].sort((a,b)=>first.split(b).length-first.split(a).length)[0];
+  const rows=[];let r=[],f="",q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c=='"')q=true;
+    else if(c===d){r.push(f);f=""}
+    else if(c==="\n"||c==="\r"){if(c==="\r"&&t[i+1]==="\n")i++;r.push(f);f="";rows.push(r);r=[]}
+    else f+=c}
+  if(f||r.length){r.push(f);rows.push(r)}
+  const head=rows.shift().map(h=>h.trim().toLowerCase());
+  return rows.filter(r=>r.some(x=>x.trim())).map(r=>{
+    const o={};head.forEach((h,i)=>o[h]=(r[i]||"").trim());
+    o.colors=(o.color||"").split(/[;,|]/).map(c=>c.trim().toLowerCase()).filter(Boolean);
+    return o});
+}
+const uniq=f=>[...new Set(ITEMS.flatMap(f).filter(Boolean))].sort();
 
 function buildControls(){
-  const types=uniq("type");
   $("tabs").innerHTML="";
-  ["all",...types].forEach(t=>{
+  ["all",...uniq(i=>[i.type])].forEach(t=>{
     const b=document.createElement("button");
     b.textContent=t==="all"?"All":t;b.dataset.t=t;
     b.onclick=()=>{st.type=t;render()};
     $("tabs").append(b);
   });
   FIELDS.forEach(([k,label])=>{
-    const vals=uniq(k);if(!vals.length)return;
+    const vals=uniq(i=>[i[k]]);if(!vals.length)return;
     const s=document.createElement("select");s.setAttribute("aria-label",label);
     s.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option>${v}</option>`).join("");
     s.onchange=()=>{st.extra[k]=s.value;render()};
     $("extras").append(s);
   });
+  const cols=uniq(i=>i.colors),box=$("colors");
+  cols.forEach(c=>{
+    const b=document.createElement("button");b.className="chip";b.dataset.c=c;
+    const ok=CSS.supports("color",c.replace(/\s/g,""));
+    b.innerHTML=(ok?`<span class="dot" style="background:${c.replace(/\s/g,"")}"></span>`:"")+c;
+    b.onclick=()=>{st.colors.has(c)?st.colors.delete(c):st.colors.add(c);render()};
+    box.append(b);
+  });
+  if(cols.length){
+    const m=document.createElement("button");m.className="mode";m.id="mode";
+    m.onclick=()=>{st.all=!st.all;render()};box.append(m);
+  } else box.hidden=true;
   $("q").oninput=e=>{st.q=e.target.value.toLowerCase();render()};
 }
 
 function render(){
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.t===st.type));
+  document.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",st.colors.has(b.dataset.c)));
+  const m=$("mode");if(m)m.textContent=st.all?"Match all selected":"Match any selected";
+  const sel=[...st.colors];
   const list=ITEMS.filter(i=>
     (st.type==="all"||i.type===st.type)&&
     (!st.q||i.name.toLowerCase().includes(st.q))&&
-    Object.entries(st.extra).every(([k,v])=>!v||i[k]===v));
+    Object.entries(st.extra).every(([k,v])=>!v||i[k]===v)&&
+    (!sel.length||(st.all?sel.every(c=>i.colors.includes(c)):sel.some(c=>i.colors.includes(c)))));
   $("count").textContent=list.length+(list.length===1?" piece":" pieces");
   const g=$("grid");g.innerHTML="";
   if(!list.length){g.innerHTML='<p class="empty">No pieces match these filters.</p>';return}
   list.forEach(i=>{
     const f=document.createElement("figure");f.className="item";f.tabIndex=0;
     const media=i.image?`<img loading="lazy" src="${encodeURI(i.image)}" alt="${i.name}">`:`<div class="ph">${i.name}</div>`;
-    f.innerHTML=media+`<figcaption>${i.name}${i.brand?" · "+i.brand:""}</figcaption>`;
+    const info=[i.name,i.brand,i.colors.join(", ")].filter(Boolean).join(" · ");
+    f.innerHTML=media+`<figcaption>${info}</figcaption>`;
     g.append(f);
   });
 }
-buildControls();render();
+
+fetch("wardrobe.csv").then(r=>{if(!r.ok)throw 0;return r.text()}).then(t=>{
+  ITEMS=parseCSV(t);buildControls();render();
+}).catch(()=>{$("grid").innerHTML='<p class="empty">Could not load wardrobe.csv. Check that it is in the same folder as index.html.</p>'});
 </script>
 </body>
 </html>
